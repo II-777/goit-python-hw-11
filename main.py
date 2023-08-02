@@ -171,16 +171,6 @@ class Bot:
             'search name': self.handle_search_name,
         }
 
-    def input_error(func):
-        def wrap(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except (KeyError, ValueError, IndexError):
-                return "[-] Input Error. Use 'help' for assistance."
-            except Exception as e:
-                return "[-] Exception: " + str(e)
-        return wrap
-
     def parse_input(self, input_string, commands):
         input_string_lower = input_string.lower()
 
@@ -214,9 +204,12 @@ class Bot:
         return command, parsed_name, parsed_birthday, parsed_phones
 
     def handle_help(self, *args):
-        print('[+] available commands: ')
+
+        print('[+] Usage: <command> <name> <birthday/phones>\n[+] Available commands: ')
         for key in self.commands:
             print(key)
+        for exit_command in self.exit_commands:
+            print(exit_command)
 
     def handle_hello(self, *args):
         print('[+] Hi there!')
@@ -251,7 +244,7 @@ class Bot:
 
     def handle_d2b(self, name, *_):
         if not name:
-            return "[-] Missing contact name. Usage: d2b <name>"
+            print("[-] Missing contact name.")
 
         if name in self.address_book.data:
             record = self.address_book.data[name]
@@ -264,37 +257,38 @@ class Bot:
                     next_birthday = next_birthday.replace(year=today.year + 1)
 
                 days_remaining = (next_birthday - today).days
-                return f"[+] {name}'s birthday is in {days_remaining} days."
+                print(f"[+] {name}'s birthday is in {days_remaining} days.")
             else:
-                return f"[-] {name} does not have a birthday specified."
+                print(f"[-] {name} does not have a birthday specified.")
         else:
-            return f"[-] Contact '{name}' not found in the address book."
+            print(f"[-] Contact '{name}' not found in the address book.")
 
     def handle_add(self, name, birthday, phones):
         if not name:
-            return "[-] Missing required 'name' field."
+            print("[-] Missing required 'name' field.")
 
         if birthday:
             try:
                 datetime.strptime(birthday, '%Y/%m/%d')
             except ValueError:
-                return "[-] Incorrect date format for 'birthday'. Use 'YYYY/MM/DD' format."
+                print(
+                    "[-] Incorrect date format for 'birthday'. Use 'YYYY/MM/DD' format.")
 
         if phones:
             for phone in phones:
                 if not re.match(r'^\d{11}$', phone):
-                    return "[-] Phone numbers must be 11-digit numerical strings."
+                    print("[-] Phone numbers must be 11-digit numerical strings.")
 
         if name in self.address_book.data:
-            return "[-] Name already exists."
+            print("[-] Name already exists.")
 
         record = Record(name, birthday, phones)
         self.address_book.add_record(record)
-        return f"[+] Contact '{name}' added successfully!"
+        print(f"[+] Contact '{name}' added successfully!")
 
     def handle_change(self, name, birthday, phones):
         if not name:
-            return "[-] Missing required 'name' field."
+            print("[-] Missing required 'name' field.")
 
         existing_record = self.address_book.data.get(name)
 
@@ -304,7 +298,8 @@ class Bot:
                     datetime.strptime(birthday, '%Y/%m/%d')
                     existing_record.birthday = Birthday(birthday)
                 except ValueError:
-                    return "[-] Incorrect date format for 'birthday'. Use 'YYYY/MM/DD' format."
+                    print(
+                        "[-] Incorrect date format for 'birthday'. Use 'YYYY/MM/DD' format.")
 
             if phones:
                 for phone in phones:
@@ -312,9 +307,9 @@ class Bot:
                         return "[-] Phone numbers must be 11-digit numerical strings."
                 existing_record.phones = [Phone(phone) for phone in phones]
 
-            return f"[+] Contact '{name}' changed successfully!"
+            print(f"[+] Contact '{name}' changed successfully!")
         else:
-            return "[-] Record not found."
+            print("[-] Record not found.")
 
     def handle_delete(self, *args):
         if args:
@@ -347,39 +342,50 @@ class Bot:
             print("[-] Missing search query. Usage: search <query>")
 
 
+def input_error(func):
+    def wrap(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except (KeyError, ValueError, IndexError):
+            return "[-] Invalid input. Use 'help' for assistance."
+        except Exception as e:
+            return "[-] Exception: " + str(e)
+    return wrap
+
+
+@ input_error
 def main():
     if not os.path.exists('contacts.csv'):
         with open('contacts.csv', 'w', newline=''):
             pass
     bot = Bot()
-    address_book = AddressBook()
     bot.address_book.load_from_csv('contacts.csv')
+    try:
+        while True:
+            try:
+                contact_input = input(">>> ")
+            except KeyboardInterrupt:
+                break
 
-    while True:
-        try:
-            contact_input = input("Enter your command:")
-        except KeyboardInterrupt:
-            break
+            if contact_input.lower() in bot.exit_commands:
+                break
 
-        if contact_input.lower() in bot.exit_commands:
-            break
+            os.system('cls' if os.name == 'nt' else 'clear')
+            command, name, birthday, phones = bot.parse_input(
+                contact_input, bot.commands.keys())
+            handler = bot.commands.get(command)
+            print(
+                f'[i] Debug: cmd: {command}; ars: {name}, {birthday}, {phones}')
 
-        os.system('cls' if os.name == 'nt' else 'clear')
-        command, name, birthday, phones = bot.parse_input(
-            contact_input, bot.commands.keys())
-        handler = bot.commands.get(command)
-        print(
-            f'[i] Debug: cmd: {command}; ars: {name}, {birthday}, {phones}')
-
-        if handler:
-            result = handler(name, birthday, phones)
-            if result:
-                print(result)
-        else:
-            print("[-] Command not recognized. Try 'help'.")
-
-    bot.address_book.save_to_csv('contacts.csv')
-    print("\n[+] Bye!")
+            if handler:
+                result = handler(name, birthday, phones)
+                if result:
+                    print(result)
+            else:
+                print("[-] Command not recognized. Try 'help'.")
+    finally:
+        bot.address_book.save_to_csv('contacts.csv')
+        print("\n[+] Bye!")
 
 
 if __name__ == "__main__":
